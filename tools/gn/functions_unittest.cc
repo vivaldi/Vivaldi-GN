@@ -169,3 +169,81 @@ TEST(Functions, DeclareArgs) {
   reading_from_different_call.parsed()->Execute(setup2.scope(), &err);
   ASSERT_FALSE(err.has_error());
 }
+
+TEST(Functions, DeclareOverrides) {
+  TestWithScope setup;
+  Err err;
+
+  // It is not legal to read the value of an argument declared in a
+  // declare_overrides() from inside the call, but outside the call and in
+  // a separate call should work.
+
+  TestParseInput reading_from_same_call(R"(
+      declare_overrides() {
+        foo = true
+        bar = foo
+      })");
+  reading_from_same_call.parsed()->Execute(setup.scope(), &err);
+  ASSERT_TRUE(err.has_error());
+
+  TestParseInput reading_from_outside_call(R"(
+      declare_overrides() {
+        foo = true
+      }
+
+      declare_args() {
+        foo = false
+      }
+
+      bar = foo
+      assert(bar)
+      )");
+  err = Err();
+  reading_from_outside_call.parsed()->Execute(setup.scope(), &err);
+  ASSERT_FALSE(err.has_error());
+
+  TestParseInput reading_from_different_call(R"(
+      declare_overrides() {
+        foo = true
+      }
+
+      declare_args() {
+        foo = false
+      }
+
+      declare_overrides() {
+        bar = foo
+      }
+
+      declare_args() {
+        bar = false
+      }
+
+      assert(bar)
+      )");
+  err = Err();
+  TestWithScope setup2;
+  reading_from_different_call.parsed()->Execute(setup2.scope(), &err);
+  ASSERT_FALSE(err.has_error());
+}
+
+TEST(Functions, DeclareOverridesAfter) {
+  TestWithScope setup;
+  Err err;
+
+  TestParseInput reading_from_outside_call(R"(
+      declare_args() {
+        foo = false
+      }
+
+      declare_overrides() {
+        foo = true
+      }
+
+      bar = foo
+      assert(!bar)
+      )");
+  err = Err();
+  reading_from_outside_call.parsed()->Execute(setup.scope(), &err);
+  ASSERT_FALSE(err.has_error()) << err.message();
+}

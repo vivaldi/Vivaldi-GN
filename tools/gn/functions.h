@@ -373,6 +373,15 @@ Value RunWriteFile(Scope* scope,
                    const std::vector<Value>& args,
                    Err* err);
 
+extern const char kDeclareOverrides[];
+extern const char kDeclareOverrides_HelpShort[];
+extern const char kDeclareOverrides_Help[];
+Value RunDeclareOverrides(Scope* scope,
+                     const FunctionCallNode* function,
+                     const std::vector<Value>& args,
+                     BlockNode* block,
+                     Err* err);
+
 // -----------------------------------------------------------------------------
 
 // One function record. Only one of the given runner types will be non-null

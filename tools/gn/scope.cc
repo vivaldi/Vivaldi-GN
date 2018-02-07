@@ -294,6 +294,11 @@ bool Scope::NonRecursiveMergeTo(Scope* dest,
     if (!options.clobber_existing) {
       const Value* existing_value = dest->GetValue(current_name);
       if (existing_value && new_value != *existing_value) {
+        if (options.prefer_existing) {
+          if (options.mark_dest_used)
+            dest->MarkUsed(current_name);
+          continue;
+        }
         // Value present in both the source and the dest.
         std::string desc_string(desc_for_err);
         *err = Err(node_for_err, "Value collision.",

@@ -46,7 +46,9 @@ class Args {
   // Specifies overrides of the build arguments. These are normally specified
   // on the command line.
   void AddArgOverride(const char* name, const Value& value);
-  void AddArgOverrides(const Scope::KeyValueMap& overrides);
+  void AddArgOverrides(const Scope::KeyValueMap& overrides,
+                       bool dont_override_existing = false,
+                       Scope *scope=nullptr);
 
   // Specifies default overrides of the build arguments. These are normally
   // specified in the .gn file.

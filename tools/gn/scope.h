@@ -71,7 +71,7 @@ class Scope {
     MergeOptions();
     ~MergeOptions();
 
-    // When set, all existing avlues in the destination scope will be
+    // When set, all existing values in the destination scope will be
     // overwritten.
     //
     // When false, it will be an error to merge a variable into another scope
@@ -80,6 +80,10 @@ class Scope {
     // somehow multiply import the same file, for example). This case will be
     // ignored since there is nothing getting lost.
     bool clobber_existing;
+
+    // Keep exisiting value if merge source also have a variable of the same
+    // name
+    bool prefer_existing = false;
 
     // When true, private variables (names beginning with an underscore) will
     // be copied to the destination scope. When false, private values will be

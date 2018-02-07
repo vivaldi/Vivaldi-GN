@@ -33,6 +33,7 @@
     *   [assert: Assert an expression is true at generation time.](#assert)
     *   [config: Defines a configuration object.](#config)
     *   [declare_args: Declare build arguments.](#declare_args)
+    *   [declare_overrides: Declare override build arguments.](#declare_overrides)
     *   [defined: Returns whether an identifier is defined.](#defined)
     *   [exec_script: Synchronously run a script and return the output.](#exec_script)
     *   [foreach: Iterate over a list.](#foreach)
@@ -1738,6 +1739,73 @@
     gn --args="enable_doom_melon=true enable_teleporter=true"
   This also sets the teleporter, but it's already defaulted to on so it will
   have no effect.
+```
+### <a name="declare_overrides"></a>**declare_overrides**: Declare override build arguments.
+
+```
+  Introduces the given arguments into the current scope, overriding any
+  subsequent declare_args declarations, but not any already declared. If
+  they are not specified on the command line or in a toolchain's
+  arguments, the default values given in the declare_overrides block will
+  be used. However, these defaults will not override command-line values.
+
+  This command should be the first run or imported by the root BUILD.gn,
+  before importing any other .gni files or calling declare_args()
+
+  See also \"gn help buildargs\" for an overview.
+
+  The precise behavior of declare overrides is:
+
+   1. The declare_overrides block executes. Any variables in the enclosing
+      scope are available for reading.
+
+   2. At the end of executing the block, any variables set within that
+      scope are saved globally as build arguments, with their current
+      values being saved as the \"default value\" for that argument.
+
+   3. User-defined overrides are applied. Anything set in \"gn args\"
+      now overrides any default values. The resulting set of variables
+      is promoted to be readable from the following code in the file.
+
+  This has some ramifications that may not be obvious:
+
+    - You should not perform difficult work inside a declare_overrides block
+      since this only sets a default value that may be discarded. In
+      particular, don't use the result of exec_script() to set the
+      default value. If you want to have a script-defined default, set
+      some default \"undefined\" value like [], \"\", or -1, and after
+      the declare_overrides block, call exec_script if the value is unset by
+      the user.
+
+    - Any code inside of the declare_overrides block will see the default
+      values of previous variables defined in the block rather than
+      the user-overridden value. This can be surprising because you will
+      be used to seeing the overridden value. If you need to make the
+      default value of one arg dependent on the possibly-overridden
+      value of another, write two separate declare_override blocks:
+
+        declare_overrides() {
+          enable_foo = true
+        }
+        declare_overrides() {
+          # Bar defaults to same user-overridden state as foo.
+          enable_bar = enable_foo
+        }
+
+  Example
+
+    declare_overrides() {
+      enable_teleporter = true
+    }
+    declare_args() {
+      enable_teleporter = false
+      enable_doom_melon = false
+    }
+
+  If you want to override the (default disabled) Doom Melon:
+    gn --args=\"enable_doom_melon=true enable_teleporter=false\"
+
+  This also disables the teleporter (default enabled by the override).
 ```
 ### <a name="defined"></a>**defined**: Returns whether an identifier is defined.
 

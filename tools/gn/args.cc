@@ -111,10 +111,22 @@ void Args::AddArgOverride(const char* name, const Value& value) {
   all_overrides_[base::StringPiece(name)] = value;
 }
 
-void Args::AddArgOverrides(const Scope::KeyValueMap& overrides) {
+void Args::AddArgOverrides(const Scope::KeyValueMap& overrides,
+                           bool dont_override_existing,
+                           Scope *scope) {
   std::lock_guard<std::mutex> lock(lock_);
+  const Scope::KeyValueMap* declared_arguments(scope ?
+    &DeclaredArgumentsForToolchainLocked(scope) : nullptr);
 
   for (const auto& cur_override : overrides) {
+    if (dont_override_existing &&
+        ((overrides_.find(cur_override.first) != overrides_.end()) ||
+         (declared_arguments && declared_arguments->find(cur_override.first) !=
+                                    declared_arguments->end())))
+      continue;
+    if (scope)
+      scope->SetValue(cur_override.first, cur_override.second,
+                      cur_override.second.origin());
     overrides_[cur_override.first] = cur_override.second;
     all_overrides_[cur_override.first] = cur_override.second;
   }
