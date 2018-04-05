@@ -19,6 +19,7 @@ namespace {
 std::unique_ptr<Scope> UncachedImport(const Settings* settings,
                                       const SourceFile& file,
                                       const ParseNode* node_for_err,
+                                      Scope* override_scope,
                                       Err* err) {
   ScopedTrace load_trace(TraceItem::TRACE_IMPORT_LOAD, file.value());
 
@@ -27,24 +28,27 @@ std::unique_ptr<Scope> UncachedImport(const Settings* settings,
   if (!node)
     return nullptr;
 
+  Scope* actual_scope = override_scope;
   std::unique_ptr<Scope> scope =
       std::make_unique<Scope>(settings->base_config());
-  scope->set_source_dir(file.GetDir());
+  if (!actual_scope)
+    actual_scope = scope.get();
+  actual_scope->set_source_dir(file.GetDir());
 
   // Don't allow ScopePerFileProvider to provide target-related variables.
   // These will be relative to the imported file, which is probably not what
   // people mean when they use these.
-  ScopePerFileProvider per_file_provider(scope.get(), false);
+  ScopePerFileProvider per_file_provider(actual_scope, false);
 
-  scope->SetProcessingImport();
-  node->Execute(scope.get(), err);
+  actual_scope->SetProcessingImport();
+  node->Execute(actual_scope, err);
   if (err->has_error()) {
     // If there was an error, append the caller location so the error message
     // displays a why the file was imported (esp. useful for failed asserts).
     err->AppendSubErr(Err(node_for_err, "whence it was imported."));
     return nullptr;
   }
-  scope->ClearProcessingImport();
+  actual_scope->ClearProcessingImport();
 
   return scope;
 }
@@ -83,6 +87,20 @@ bool ImportManager::DoImport(const SourceFile& file,
   // See if we have a cached import, but be careful to actually do the scope
   // copying outside of the lock.
   ImportInfo* import_info = nullptr;
+  std::unique_ptr<ImportInfo> temp_import_info;
+  Scope* override_scope = nullptr;
+  if (scope->IsProcessingBuildConfig()) {
+    // Don't cache build config imports
+    temp_import_info = std::make_unique<ImportInfo>();
+    import_info = temp_import_info.get();
+    override_scope = scope;
+
+    if (imports_in_progress_.find(key) != imports_in_progress_.end()) {
+      *err = Err(Location(), file.value() + " is part of an import loop.");
+      return false;
+    }
+    imports_in_progress_.insert(key);
+  } else
   {
     std::lock_guard<std::mutex> lock(imports_lock_);
     std::unique_ptr<ImportInfo>& info_ptr = imports_[file];
@@ -110,7 +128,8 @@ bool ImportManager::DoImport(const SourceFile& file,
       // Only load if the import hasn't already failed.
       if (!import_info->load_result.has_error()) {
         import_info->scope = UncachedImport(
-            scope->settings(), file, node_for_err, &import_info->load_result);
+            scope->settings(), file, node_for_err, override_scope,
+            &import_info->load_result);
       }
       if (import_info->load_result.has_error()) {
         *err = import_info->load_result;
@@ -136,6 +155,9 @@ bool ImportManager::DoImport(const SourceFile& file,
     // Promote the now-read-only scope to outside the load lock.
     import_scope = import_info->scope.get();
   }
+
+  if (override_scope)
+    return true;
 
   Scope::MergeOptions options;
   options.skip_private_vars = true;
