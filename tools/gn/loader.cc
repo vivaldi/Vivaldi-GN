@@ -290,7 +290,8 @@ void LoaderImpl::BackgroundLoadBuildConfig(
   }
 
   Scope* base_config = settings->base_config();
-  base_config->set_source_dir(SourceDir("//"));
+  base_config->set_source_dir(SourceDir(
+      settings->build_settings()->RemapActualToSourcePath("//")));
   base_config->AddBuildDependencyFile(
       settings->build_settings()->build_config_file());
 

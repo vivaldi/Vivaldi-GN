@@ -126,6 +126,11 @@ Variables
       This is intended to be used when subprojects declare arguments with
       default values that need to be changed for whatever reason.
 
+  set_path_map [optional]
+
+      Function used to specify path overrides. See "set_path_map" function
+      for details
+
 Example .gn file contents
 
   buildconfig = "//build/config/BUILDCONFIG.gn"
@@ -707,7 +712,13 @@ bool Setup::RunConfigFile() {
 
 bool Setup::FillOtherConfig(const base::CommandLine& cmdline) {
   Err err;
-  SourceDir current_dir("//");
+
+  // May need to update the source path of the main gn file
+  root_build_file_ = SourceFile(
+          build_settings_.RemapActualToSourcePath(root_build_file_.value()),
+          root_build_file_.value());
+
+  SourceDir current_dir(build_settings_.RemapActualToSourcePath("//"));
   Label root_target_label(current_dir, "");
 
   // Secondary source path, read from the config file if present.

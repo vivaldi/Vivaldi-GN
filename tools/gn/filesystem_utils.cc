@@ -654,11 +654,12 @@ std::string MakeRelativePath(const std::string& input,
   return ret;
 }
 
-std::string RebasePath(const std::string& input,
+std::string RebasePath(const std::string& ainput,
                        const SourceDir& dest_dir,
                        const base::StringPiece& source_root) {
   std::string ret;
   DCHECK(source_root.empty() || !source_root.ends_with("/"));
+  std::string input = BuildSettings::RemapSourcePathToActual(ainput);
 
   bool input_is_source_path =
       (input.size() >= 2 && input[0] == '/' && input[1] == '/');
@@ -677,7 +678,7 @@ std::string RebasePath(const std::string& input,
     if (dest_dir.is_source_absolute()) {
       source_root.AppendToString(&dest_full);
       dest_full.push_back('/');
-      dest_full.append(dest_dir.value(), 2, std::string::npos);
+      dest_full.append(dest_dir.actual_path(), 2, std::string::npos);
     } else {
 #if defined(OS_WIN)
       // On Windows, SourceDir system-absolute paths start
@@ -702,7 +703,7 @@ std::string RebasePath(const std::string& input,
     return ret;
   }
 
-  ret = MakeRelativePath(input, dest_dir.value());
+  ret = MakeRelativePath(input, dest_dir.actual_path());
   return ret;
 }
 
@@ -737,17 +738,26 @@ template <typename StringType>
 std::string ResolveRelative(const StringType& input,
                             const std::string& value,
                             bool as_file,
-                            const base::StringPiece& source_root) {
+                            const base::StringPiece& source_root,
+                            const std::string* actual_path_in,
+                            std::string* actual_path_out) {
   std::string result;
 
   if (input.size() >= 2 && input[0] == '/' && input[1] == '/') {
     // Source-relative.
-    result.assign(input.data(), input.size());
+    std::string actual_path;
+    actual_path.assign(input.data(), input.size());
+    // Convert to actual path
+    actual_path = BuildSettings::RemapSourcePathToActual(actual_path);
     if (!as_file) {
-      if (!EndsWithSlash(result))
-        result.push_back('/');
+      if (!EndsWithSlash(actual_path))
+        actual_path.push_back('/');
     }
-    NormalizePath(&result, source_root);
+    NormalizePath(&actual_path, source_root);
+    if (actual_path_out) {
+      *actual_path_out = actual_path;
+    }
+    result = BuildSettings::RemapActualToSourcePath(actual_path);
     return result;
   } else if (IsPathAbsolute(input)) {
     if (source_root.empty() ||
@@ -763,12 +773,17 @@ std::string ResolveRelative(const StringType& input,
       if (!EndsWithSlash(result))
         result.push_back('/');
     }
+    if (actual_path_out) {
+      *actual_path_out = result;
+      result = BuildSettings::RemapActualToSourcePath(*actual_path_out);
+    }
     return result;
   }
 
   if (!source_root.empty()) {
     std::string absolute =
-        FilePathToUTF8(ResolvePath(value, as_file, UTF8ToFilePath(source_root))
+        FilePathToUTF8(ResolvePath(actual_path_in ? *actual_path_in : value,
+                                   as_file, UTF8ToFilePath(source_root))
                            .AppendASCII(input)
                            .value());
     NormalizePath(&absolute);
@@ -779,21 +794,38 @@ std::string ResolveRelative(const StringType& input,
 #endif
       result.append(absolute.data(), absolute.size());
     }
+
     if (!as_file && !EndsWithSlash(result))
       result.push_back('/');
+
+    if (actual_path_in) {
+      if (actual_path_out) {
+        *actual_path_out = result;
+      }
+      result = BuildSettings::RemapActualToSourcePath(result);
+    }
+
     return result;
   }
 
   // With no source_root, there's nothing we can do about
   // e.g. input=../../../path/to/file and value=//source and we'll
   // errornously return //file.
-  result.reserve(value.size() + input.size());
-  result.assign(value);
+  result.reserve((actual_path_in ? *actual_path_in : value).size() +
+                 input.size());
+  result.assign(actual_path_in ? *actual_path_in : value);
   result.append(input.data(), input.size());
 
   NormalizePath(&result);
   if (!as_file && !EndsWithSlash(result))
     result.push_back('/');
+
+  if (actual_path_in) {
+    if (actual_path_out) {
+      *actual_path_out = result;
+    }
+    result = BuildSettings::RemapActualToSourcePath(result);
+  }
 
   return result;
 }
@@ -802,12 +834,16 @@ std::string ResolveRelative(const StringType& input,
 template std::string ResolveRelative(const base::StringPiece& input,
                                      const std::string& value,
                                      bool as_file,
-                                     const base::StringPiece& source_root);
+                                     const base::StringPiece& source_root,
+                                     const std::string* actual_path_in,
+                                     std::string* actual_path_out);
 
 template std::string ResolveRelative(const std::string& input,
                                      const std::string& value,
                                      bool as_file,
-                                     const base::StringPiece& source_root);
+                                     const base::StringPiece& source_root,
+                                     const std::string* actual_path_in,
+                                     std::string* actual_path_out);
 
 std::string DirectoryWithNoLastSlash(const SourceDir& dir) {
   std::string ret;
@@ -864,7 +900,10 @@ SourceDir SourceDirForPath(const base::FilePath& source_root,
     result_str.append(FilePathToUTF8(path_comp[i]));
     result_str.push_back('/');
   }
-  return SourceDir(result_str);
+
+  std::string result_str2 = BuildSettings::RemapActualToSourcePath(result_str);
+
+  return SourceDir(result_str2, result_str);
 }
 
 SourceDir SourceDirForCurrentDirectory(const base::FilePath& source_root) {

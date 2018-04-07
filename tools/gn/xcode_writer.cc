@@ -383,7 +383,7 @@ bool XcodeWriter::RunAndWriteFiles(const std::string& workspace_name,
           .AsUTF8Unsafe();
 
   std::string config_name = build_settings->build_dir()
-                                .Resolve(base::FilePath())
+                                .Resolve(base::FilePath(), true)
                                 .StripTrailingSeparators()
                                 .BaseName()
                                 .AsUTF8Unsafe();

@@ -63,6 +63,18 @@ SourceDir::SourceDir(const base::StringPiece& p) : value_(p.data(), p.size()) {
   if (!EndsWithSlash(value_))
     value_.push_back('/');
   AssertValueSourceDirString(value_);
+  actual_path_ = BuildSettings::RemapSourcePathToActual(value_);
+}
+
+SourceDir::SourceDir(const base::StringPiece& p, const base::StringPiece& p_act)
+    : value_(p.data(), p.size()),
+      actual_path_(p_act.data(), p_act.size()) {
+  if (!EndsWithSlash(value_))
+    value_.push_back('/');
+  if (!EndsWithSlash(actual_path_))
+    actual_path_.push_back('/');
+  AssertValueSourceDirString(value_);
+  AssertValueSourceDirString(actual_path_);
 }
 
 SourceDir::SourceDir(SwapIn, std::string* s) {
@@ -70,6 +82,7 @@ SourceDir::SourceDir(SwapIn, std::string* s) {
   if (!EndsWithSlash(value_))
     value_.push_back('/');
   AssertValueSourceDirString(value_);
+  actual_path_ = BuildSettings::RemapSourcePathToActual(value_);
 }
 
 SourceDir::~SourceDir() = default;
@@ -80,12 +93,15 @@ std::string SourceDir::ResolveRelativeAs(
     const Value& blame_input_value,
     const StringType& input_value,
     Err* err,
-    const base::StringPiece& source_root) const {
+    const base::StringPiece& source_root,
+    const std::string* actual_path_in,
+    std::string* actual_path_out) const {
   if (!ValidateResolveInput<StringType>(as_file, blame_input_value, input_value,
                                         err)) {
     return std::string();
   }
-  return ResolveRelative(input_value, value_, as_file, source_root);
+  return ResolveRelative(input_value, value_, as_file, source_root,
+                         actual_path_in, actual_path_out);
 }
 
 SourceFile SourceDir::ResolveRelativeFile(
@@ -101,7 +117,8 @@ SourceFile SourceDir::ResolveRelativeFile(
   if (!ValidateResolveInput<std::string>(true, p, input_string, err)) {
     return ret;
   }
-  ret.value_ = ResolveRelative(input_string, value_, true, source_root);
+  ret.value_ = ResolveRelative(input_string, value_, true, source_root,
+                               &actual_path_, &ret.actual_path_);
   return ret;
 }
 
@@ -117,7 +134,7 @@ std::string SourceDir::ResolveRelativeAs(bool as_file,
     v_value = &v.string_value();
   }
   std::string result =
-      ResolveRelativeAs(as_file, v, *v_value, err, source_root);
+      ResolveRelativeAs(as_file, v, *v_value, err, source_root, &actual_path_);
   if (!as_file)
     AssertValueSourceDirString(result);
   return result;
@@ -133,8 +150,10 @@ SourceDir SourceDir::ResolveRelativeDir(
   return ResolveRelativeDir<std::string>(v, v.string_value(), err, source_root);
 }
 
-base::FilePath SourceDir::Resolve(const base::FilePath& source_root) const {
-  return ResolvePath(value_, false, source_root);
+base::FilePath SourceDir::Resolve(const base::FilePath& source_root,
+                                  bool use_actual_path) const {
+  return ResolvePath(use_actual_path ? actual_path_ : value_, false,
+                     source_root);
 }
 
 void SourceDir::SwapValue(std::string* v) {
@@ -148,11 +167,15 @@ template std::string SourceDir::ResolveRelativeAs(
     const Value& blame_input_value,
     const std::string& input_value,
     Err* err,
-    const base::StringPiece& source_root) const;
+    const base::StringPiece& source_root,
+    const std::string* actual_path_in,
+    std::string* actual_path_out) const;
 
 template std::string SourceDir::ResolveRelativeAs(
     bool as_file,
     const Value& blame_input_value,
     const base::StringPiece& input_value,
     Err* err,
-    const base::StringPiece& source_root) const;
+    const base::StringPiece& source_root,
+    const std::string* actual_path_in,
+    std::string* actual_path_out) const;

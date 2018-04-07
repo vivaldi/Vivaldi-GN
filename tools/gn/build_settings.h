@@ -117,6 +117,16 @@ class BuildSettings {
     exec_script_whitelist_ = std::move(list);
   }
 
+  // Register a list of label path aliases for actual paths relative
+  // to the top source directory.
+  bool RegisterPathMap(const std::string &prefix,
+                       const std::string &map_to_path);
+  // Convert a label to an actual label path relative to top source directory
+  static std::string RemapSourcePathToActual(const std::string &path);
+  // Convert an actual label path to an aliased path
+  static std::string RemapActualToSourcePath(const std::string &path);
+  static bool path_maps_enabled() { return path_map_.size() > 0; }
+
  private:
   Label root_target_label_;
   base::FilePath root_path_;
@@ -133,6 +143,13 @@ class BuildSettings {
   PrintCallback print_callback_;
 
   std::unique_ptr<std::set<SourceFile>> exec_script_whitelist_;
+
+  struct path_mapper {
+    std::string prefix;      // "//foo/" always coded as "foo"
+    std::string actual_path; // relative to root_path_, empty means root_path_
+  };
+
+  static std::vector<path_mapper> path_map_;
 
   DISALLOW_ASSIGN(BuildSettings);
 };

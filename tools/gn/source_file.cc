@@ -30,6 +30,17 @@ SourceFile::SourceFile(const base::StringPiece& p)
   DCHECK(!value_.empty());
   AssertValueSourceFileString(value_);
   NormalizePath(&value_);
+  actual_path_ = BuildSettings::RemapSourcePathToActual(value_);
+}
+
+SourceFile::SourceFile(const base::StringPiece& p,
+                       const base::StringPiece& p_act)
+    : value_(p.data(), p.size()),
+      actual_path_(p_act.data(), p_act.size()) {
+  DCHECK(!value_.empty());
+  AssertValueSourceFileString(value_);
+  NormalizePath(&value_);
+  NormalizePath(&actual_path_);
 }
 
 SourceFile::SourceFile(SwapIn, std::string* value) {
@@ -37,6 +48,7 @@ SourceFile::SourceFile(SwapIn, std::string* value) {
   DCHECK(!value_.empty());
   AssertValueSourceFileString(value_);
   NormalizePath(&value_);
+  actual_path_ = BuildSettings::RemapSourcePathToActual(value_);
 }
 
 SourceFile::~SourceFile() = default;
@@ -59,6 +71,8 @@ SourceDir SourceFile::GetDir() const {
   return SourceDir(base::StringPiece(&value_[0], last_slash + 1));
 }
 
-base::FilePath SourceFile::Resolve(const base::FilePath& source_root) const {
-  return ResolvePath(value_, true, source_root);
+base::FilePath SourceFile::Resolve(const base::FilePath& source_root,
+                                   bool use_actual_path) const {
+  return ResolvePath(use_actual_path ? actual_path_ : value_, true,
+                     source_root);
 }

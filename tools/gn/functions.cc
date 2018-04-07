@@ -1079,6 +1079,95 @@ Value RunSplitList(Scope* scope,
   return result;
 }
 
+// set_path_map ----------------------------------------------------------
+
+const char kSetPathMap[] = "set_path_map";
+const char kSetPathMap_HelpShort[] =
+    "set_path_map: Set a path override map.";
+const char kSetPathMap_Help[] =
+    R"(set_path_map: Set a path override map.
+
+  NOTE: Only used in the "dotgn"-file.
+
+  set_path_map(<path_map>)
+
+  This function takes an array of elements lists having two subelements,
+  an absolute label prefix and an absolute label specifying the actual
+  filesystem path relative to the project's top directory that the prefix
+  is an alias for. The elements must be ordered with the most specific
+  prefixes first, preferably with the least specific "//" element last.
+  Correspondingly, the most specific actual label should be last, and the
+  least specific element first.
+
+  Example specification and label mappings:
+
+    set_path_map([
+      # Prefix, actual path
+      # Most specific prefixes first
+      [
+        "//alpha",
+        "//",
+      ],
+      [
+        "//beta",
+        "//beta",
+      ],
+      [
+        "//",
+        "//gamma",
+      ],
+    ])
+
+    Label             Actual path
+    //alpha/a/b/c     //a/b/c
+    //beta/d/e/f      //beta/d/e/f
+    //foo/g/h/i       //gamma/foo/g/h/i
+)";
+
+Value RunSetPathMap(Scope* scope,
+    const FunctionCallNode* function,
+    const std::vector<Value>& args,
+    Err* err) {
+  if (args.size() <1) {
+    Err(Location(), "No Path Map declared").PrintToStdout();
+    return Value();
+  }
+
+  BuildSettings *build_settings =
+    (BuildSettings *) scope->settings()->build_settings();
+
+  const Value& path_map = args[0];
+  if (!path_map.VerifyTypeIs(Value::LIST, err)) {
+    return Value();
+  }
+  for (auto &&it : path_map.list_value()) {
+    if (!it.VerifyTypeIs(Value::LIST, err)) {
+      return Value();
+    }
+    if (it.list_value().size() <2) {
+      *err = Err(Location(), "Failed to set path map values");
+      return Value();
+    }
+
+    const Value &prefix = it.list_value()[0];
+    const Value &actual = it.list_value()[1];
+    if (!prefix.VerifyTypeIs(Value::STRING, err) ||
+      !actual.VerifyTypeIs(Value::STRING, err)) {
+      return Value();
+    }
+    if (!build_settings->RegisterPathMap(prefix.string_value(),
+      actual.string_value())) {
+      *err = Err(Location(), "Failed to set path map values");
+      return Value();
+    }
+  }
+  // May need to update the source path of the main gn file
+  // But we do that during the FillOtherConfig setup step
+  // scope->settings()->UpdateRootBuildFile();
+
+  return Value();
+}
+
 // -----------------------------------------------------------------------------
 
 FunctionInfo::FunctionInfo()
@@ -1191,6 +1280,7 @@ struct FunctionInfoInitializer {
     INSERT_FUNCTION(Toolchain, false)
     INSERT_FUNCTION(WriteFile, false)
 
+    INSERT_FUNCTION(SetPathMap,false)
 #undef INSERT_FUNCTION
   }
 };

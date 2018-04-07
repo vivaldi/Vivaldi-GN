@@ -31,6 +31,8 @@ class SourceDir {
 
   SourceDir();
   explicit SourceDir(const base::StringPiece& p);
+  SourceDir(const base::StringPiece& p,
+            const base::StringPiece& p_act);
   // Swaps the given string in without copies. The given string will be empty
   // after this call.
   SourceDir(SwapIn, std::string* s);
@@ -62,7 +64,9 @@ class SourceDir {
       const Value& blame_input_value,
       const StringType& input_value,
       Err* err,
-      const base::StringPiece& source_root = base::StringPiece()) const;
+      const base::StringPiece& source_root = base::StringPiece(),
+      const std::string* actual_path_in = NULL,
+      std::string* actual_path_out = NULL) const;
 
   // Wrapper for ResolveRelativeAs.
   SourceFile ResolveRelativeFile(
@@ -78,8 +82,9 @@ class SourceDir {
       Err* err,
       const base::StringPiece& source_root = base::StringPiece()) const {
     SourceDir ret;
-    ret.value_ = ResolveRelativeAs<StringType>(false, blame_input_value,
-                                               input_value, err, source_root);
+    ret.value_ = ResolveRelativeAs<StringType>(
+        false, blame_input_value, input_value, err, source_root, &actual_path_,
+        &ret.actual_path_);
     return ret;
   }
 
@@ -92,10 +97,12 @@ class SourceDir {
 
   // Resolves this source file relative to some given source root. Returns
   // an empty file path on error.
-  base::FilePath Resolve(const base::FilePath& source_root) const;
+  base::FilePath Resolve(const base::FilePath& source_root,
+                         bool use_actual_path) const;
 
   bool is_null() const { return value_.empty(); }
   const std::string& value() const { return value_; }
+  const std::string& actual_path() const { return actual_path_; }
 
   // Returns true if this path starts with a "//" which indicates a path
   // from the source root.
@@ -132,6 +139,7 @@ class SourceDir {
  private:
   friend class SourceFile;
   std::string value_;
+  std::string actual_path_;
 
   // Copy & assign supported.
 };

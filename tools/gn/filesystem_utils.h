@@ -169,7 +169,9 @@ template <typename StringType>
 std::string ResolveRelative(const StringType& input,
                             const std::string& value,
                             bool as_file,
-                            const base::StringPiece& source_root);
+                            const base::StringPiece& source_root,
+                            const std::string* actual_path_in = NULL,
+                            std::string* actual_path_out = NULL);
 
 // Resolves source file or directory relative to some given source root. Returns
 // an empty file path on error.
