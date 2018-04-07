@@ -1380,6 +1380,8 @@ struct FunctionInfoInitializer {
 
     INSERT_FUNCTION(DeclareOverrides,false)
     INSERT_FUNCTION(SetPathMap,false)
+    INSERT_FUNCTION(UpdateTarget,false)
+    INSERT_FUNCTION(UpdateTemplate,false)
 #undef INSERT_FUNCTION
   }
 };
@@ -1451,6 +1453,11 @@ Value RunFunction(Scope* scope,
     block->Execute(&block_scope, err);
     if (err->has_error())
       return Value();
+    if (function->function().value().as_string() == "copy") {
+      if (!UpdateTheTarget(&block_scope, function,
+                                   args.list_value(), block, err))
+        return Value();
+    }
 
     Value result = found_function->second.executed_block_runner(
         function, args.list_value(), &block_scope, err);

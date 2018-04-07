@@ -53,6 +53,10 @@ Value Template::Invoke(Scope* scope,
     block->Execute(invocation_scope.get(), err);
     if (err->has_error())
       return Value();
+
+    if (!functions::UpdateTheTemplate(invocation_scope.get(),
+                  invocation, args, block, err, scope))
+      return Value();
   }
 
   // Set up the scope to run the template and set the current directory for the

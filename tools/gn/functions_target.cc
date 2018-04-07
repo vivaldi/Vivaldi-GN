@@ -4,6 +4,7 @@
 
 #include "tools/gn/functions.h"
 
+#include "tools/gn/build_settings.h"
 #include "tools/gn/config_values_generator.h"
 #include "tools/gn/err.h"
 #include "tools/gn/parse_tree.h"
@@ -44,6 +45,8 @@ Value ExecuteGenericTarget(const char* target_type,
 
   block->Execute(&block_scope, err);
   if (err->has_error())
+    return Value();
+  if (!UpdateTheTarget(&block_scope, function, args, block, err))
     return Value();
 
   TargetGenerator::GenerateTarget(&block_scope, function, args, target_type,
@@ -768,6 +771,332 @@ Value RunTarget(Scope* scope,
   // Otherwise, assume the target is a built-in target type.
   return ExecuteGenericTarget(target_type.c_str(), scope, function, sub_args,
                               block, err);
+}
+
+// Update targets and templates ---------------------
+
+namespace {
+bool GetTargetName(Scope* scope,
+                const FunctionCallNode* function,
+                const std::vector<Value>& args,
+                std::string &ret_name,
+                Err* err) {
+  if (args.size() != 1) {
+    *err = Err(function, "Expected one argument.",
+              "Try \"gn help update_target\".");
+    return false;
+  }
+
+  // The argument must be a string (the target name).
+  if (!args[0].VerifyTypeIs(Value::STRING, err))
+    return false;
+
+  const std::string &target_name = args[0].string_value();
+  if ((target_name[0] != ':' && target_name[0] != '/') ||
+      (target_name[1] == '/' && target_name[1] != '/' )) {
+    *err = Err(function, "Expected a valid target like \"//foo:bar\" or"
+                         "\":bar\", got \""+ target_name + "\".",
+                         "Try \"gn help update_target\".");
+    return false;
+  }
+
+  size_t target_ind = target_name.find_first_of(':');
+  std::string source_name;
+
+  // Need a valid target in string
+  if (target_ind == target_name.length()) {
+    *err = Err(function, "Expected a valid target like  \"//foo\","
+                         " \"//foo:bar\" or \":bar\", got \""+
+                         target_name + "\".",
+                         "Try \"gn help update_target\".");
+    return false;
+  }
+  if(target_ind != std::string::npos && target_ind >0) {
+    SourceDir dir(target_name.substr(0,target_ind));
+
+    const Label& toolchain_label = ToolchainLabelForScope(scope);
+    Label label(dir, target_name.substr(target_ind+1),
+                toolchain_label.dir(), toolchain_label.name());
+
+    source_name = label.GetUserVisibleName(false);
+  } else {
+    source_name = target_name;
+  }
+
+  ret_name = source_name;
+  return true;
+}
+
+Value RunUpdateItem(
+    Scope::UpdateParseMap &map,
+    Scope* scope,
+    const FunctionCallNode* function,
+    const std::vector<Value>& args,
+    BlockNode* block,
+    Err* err) {
+  std::string source_name;
+  if (!GetTargetName(scope, function, args, source_name, err))
+    return Value();
+
+  map[source_name].updates.push_back(std::make_pair(function->block(),
+                                                    scope->MakeClosure()));
+
+  return Value();
+}
+
+bool UpdateTheCode(Scope::UpdateParseMap &map,
+    Scope* scope,
+    const FunctionCallNode* function,
+    const std::vector<Value>& args,
+    BlockNode* block,
+    Err* err,
+    Scope *function_scope=NULL) {
+  if (args.size() != 1) {
+    *err = Err(function, "Expected one argument.",
+               "Try \"gn help update_target\".");
+    return false;
+  }
+  const std::string& target_name = args[0].string_value();
+  if (!function_scope)
+    function_scope = scope;
+
+  const Label& toolchain_label = ToolchainLabelForScope(function_scope);
+  Label label(function_scope->GetSourceDir(), args[0].string_value(),
+              toolchain_label.dir(), toolchain_label.name());
+  std::string target_label_full = label.GetUserVisibleName(true);
+
+  auto it = map.find(":" + target_name);
+  if (it == map.end())
+    it = map.find(function_scope->GetSourceDir().value());
+  if (it != map.end() && it->second.targets_done.find(target_label_full) ==
+                             it->second.targets_done.end()) {
+    it->second.used = true;
+    it->second.targets_done.insert(target_label_full);
+    for (auto &&item: it->second.updates) {
+      Scope::MergeOptions prefer_scope;
+      prefer_scope.prefer_existing = true;
+      Scope extra_scope(scope);
+      item.second->NonRecursiveMergeTo(&extra_scope, prefer_scope,
+              function, "Update start import", err);
+      if (err->has_error())
+        return false;
+      Scope block_scope(&extra_scope);
+
+      item.first->Execute(&block_scope, err);
+      if (err->has_error())
+        return false;
+      Scope::MergeOptions clobber_scope;
+      clobber_scope.clobber_existing = true;
+      block_scope.NonRecursiveMergeTo(scope, clobber_scope, function,
+              "Update final integration", err);
+      if (err->has_error())
+        return false;
+    }
+  }
+
+  it = map.find(label.GetUserVisibleName(false));
+  if (it != map.end() && it->second.targets_done.find(target_label_full) ==
+                             it->second.targets_done.end()) {
+    it->second.used = true;
+    it->second.targets_done.insert(target_label_full);
+    for (auto&& item : it->second.updates) {
+      Scope::MergeOptions prefer_scope;
+      prefer_scope.prefer_existing = true;
+      Scope extra_scope(scope);
+      item.second->NonRecursiveMergeTo(&extra_scope, prefer_scope,
+              function, "Update start import", err);
+      if (err->has_error())
+        return false;
+      Scope block_scope(&extra_scope);
+
+      item.first->Execute(&block_scope, err);
+      if (err->has_error())
+        return false;
+      Scope::MergeOptions clobber_scope;
+      clobber_scope.clobber_existing = true;
+
+      block_scope.NonRecursiveMergeTo(scope, clobber_scope, function,
+              "Update final integration", err);
+      if (err->has_error())
+        return false;
+    }
+  }
+
+  return true;
+}
+
+} // namespace
+
+bool UpdateTheTarget(
+    Scope* scope,
+    const FunctionCallNode* function,
+    const std::vector<Value>& args,
+    BlockNode* block,
+    Err* err) {
+  Scope::UpdateParseMap &map = scope->GetTargetUpdaters();
+
+  return UpdateTheCode(map, scope, function, args, block, err);
+}
+
+bool UpdateTheTemplate(
+    Scope* scope,
+    const FunctionCallNode* function,
+    const std::vector<Value>& args,
+    BlockNode* block,
+    Err* err,
+    Scope *function_scope) {
+  Scope::UpdateParseMap &map = scope->GetTemplateInstanceUpdaters();
+
+  return UpdateTheCode(map, scope, function, args, block, err,
+          function_scope);
+}
+
+const char kUpdateTarget[] = "update_target";
+const char kUpdateTarget_HelpShort[] =
+"update_target: Add code to be run after setting up a target.";
+const char kUpdateTarget_Help[] =
+    R"(update_target: Add code to be run after setting up a target.
+  update_target functions take a single parameter, the label of the target to
+  be updated, it must either be fully qualified, or just have the intra-file
+  \":foo" name (not recommended, as it might conceivably be run for multiple
+  targets, with possible unwanted side-effects.
+
+  The code portion of the function is run in the scope of the target, after
+  the target code itself have been executed. If multiple update_target calls
+  will update a single target, the order of execution is not guaranteed.
+
+  Updates of targets can be used to add additional sources or dependencies
+  by a project embedding another. They can also be used to update variables
+  in a target.
+
+  update_targets must be specified by the top project's BUILD.gn before any
+  targets have been declared. Updates declared afterwards will not be called.
+
+  Caution: Updates of variables already used to compute other variables in
+  the original target will not affect the other variables' value.
+
+  Recommended organization: update_targets should be placed in gni files,
+  imported directly or indirectly by the top BUILD.gn file, and no other
+  BUILD.gn file. The gni files should be placed in the same directory as
+  the code they are related to, such as the files being added as sources,
+  or targets added as dependencies.
+
+  Example:
+
+    in //foo/source_updates.gni:
+
+      update_target("//bar:bar") {
+        sources += ["//foo/foo.cc"]
+      }
+
+    in //bar/BUILD.gn
+
+      #import would normally go in top level BUILD.gn
+      import("//foo/source_updates.gni")
+
+      executable("bar") {
+        sources = ["bar.cc"]
+      }
+
+    The result would become
+
+      executable("bar") {
+        sources = [
+          "bar.cc",
+          "//foo/foo.cc",
+        ]
+      }
+)";
+
+Value RunUpdateTarget(Scope* scope,
+    const FunctionCallNode* function,
+    const std::vector<Value>& args,
+    BlockNode* block,
+    Err* err) {
+  return RunUpdateItem(scope->GetTargetUpdaters(), scope,
+                       function, args, block, err);
+}
+
+const char kUpdateTemplate[] = "update_template_instance";
+const char kUpdateTemplate_HelpShort[] =
+"update_template_instance: Add code to be run after setting up a template"
+" instance.";
+const char kUpdateTemplate_Help[] =
+    R"(update_template_instance: Add code to a template instance.
+
+  update_template_instance functions take a single parameter, the label of the
+  template instantiation to be updated, it must either be fully qualified, or
+  just have the intra-file \":foo" name (not recommended, as it might
+  conceivably be run for multiple instanitations, with possible unwanted
+  side-effects.
+
+  The code portion of the function is run in the scope of the template
+  instantiation, after the template instantiation code itself have been
+  executed. If multiple update_template_instance calls will update a single
+  template instantiation, the order of execution is not guaranteed.
+
+  Updates of template instantiation can be used to add additional sources or
+  dependencies by a project embedding another. They can also be used to update
+  variables in a template instantiation.
+
+  update_template_instance must be specified by the top project's BUILD.gn
+  before any targets have been declared. Updates declared afterwards will not
+  be called.
+
+  Caution: Updates of variables already used to compute other variables in
+  the original template instantiation will not affect the other variables'
+  value.
+
+  Caution: In the case of nested template instantiations each using the
+  target_name, the update will only be run for the outermost template with
+  that particular label and toolchain.
+
+  Recommended organization: update_template_instance should be placed in gni
+  files, imported directly or indirectly by the top BUILD.gn file, and no other
+  BUILD.gn file. The gni files should be placed in the same directory as
+  the code they are related to, such as the files being added as sources,
+  or targets added as dependencies.
+
+  Example:
+
+    in //foo/source_updates.gni:
+
+      update_template_instance("//bar:bar") {
+        sources += ["//foo/foo.cc"]
+      }
+
+    in //bar/BUILD.gn
+
+      #import would normally go in top level BUILD.gn
+      import("//foo/source_updates.gni")
+
+      template("baz") {
+        executable(target_name) {
+          sources = invoker.sources
+        }
+      }
+
+      baz("bar") {
+        sources = ["bar.cc"]
+      }
+
+    The result would become
+
+      baz("bar") {
+        sources = [
+          "bar.cc",
+          "//foo/foo.cc",
+        ]
+      }
+)";
+
+Value RunUpdateTemplate(Scope* scope,
+    const FunctionCallNode* function,
+    const std::vector<Value>& args,
+    BlockNode* block,
+    Err* err) {
+  return RunUpdateItem(scope->GetTemplateInstanceUpdaters(), scope,
+                       function, args, block, err);
 }
 
 }  // namespace functions

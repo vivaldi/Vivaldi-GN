@@ -57,6 +57,8 @@
     *   [template: Define a template rule.](#template)
     *   [tool: Specify arguments to a toolchain tool.](#tool)
     *   [toolchain: Defines a toolchain.](#toolchain)
+    *   [update_target: Add code to be run after setting up a target.](#update_target)
+    *   [update_template_instance: Add code to be run after setting up a template instance.](#update_template_instance)
     *   [write_file: Write a file to disk.](#write_file)
 *   [Built-in predefined variables](#predefined_variables)
     *   [current_cpu: [string] The processor architecture of the current toolchain.](#current_cpu)
@@ -3495,6 +3497,127 @@
         ...
       }
     }
+```
+### <a name="update_target"></a>**update_target**: Add code to be run after setting up a target.
+```
+  update_target functions take a single parameter, the label of the target to
+  be updated, it must either be fully qualified, or just have the intra-file
+  \":foo" name (not recommended, as it might conceivably be run for multiple
+  targets, with possible unwanted side-effects.
+
+  The code portion of the function is run in the scope of the target, after
+  the target code itself have been executed. If multiple update_target calls
+  will update a single target, the order of execution is not guaranteed.
+
+  Updates of targets can be used to add additional sources or dependencies
+  by a project embedding another. They can also be used to update variables
+  in a target.
+
+  update_targets must be specified by the top project's BUILD.gn before any
+  targets have been declared. Updates declared afterwards will not be called.
+
+  Caution: Updates of variables already used to compute other variables in
+  the original target will not affect the other variables' value.
+
+  Recommended organization: update_targets should be placed in gni files,
+  imported directly or indirectly by the top BUILD.gn file, and no other
+  BUILD.gn file. The gni files should be placed in the same directory as
+  the code they are related to, such as the files being added as sources,
+  or targets added as dependencies.
+
+  Example:
+
+    in //foo/source_updates.gni:
+
+      update_target("//bar:bar") {
+        sources += ["//foo/foo.cc"]
+      }
+
+    in //bar/BUILD.gn
+
+      #import would normally go in top level BUILD.gn
+      import("//foo/source_updates.gni")
+
+      executable("bar") {
+        sources = ["bar.cc"]
+      }
+
+    The result would become
+
+      executable("bar") {
+        sources = [
+          "bar.cc",
+          "//foo/foo.cc",
+        ]
+      }
+```
+### <a name="update_template_instance"></a>**update_template_instance**: Add code to a template instance.
+
+```
+  update_template_instance functions take a single parameter, the label of the
+  template instantiation to be updated, it must either be fully qualified, or
+  just have the intra-file \":foo" name (not recommended, as it might
+  conceivably be run for multiple instanitations, with possible unwanted
+  side-effects.
+
+  The code portion of the function is run in the scope of the template
+  instantiation, after the template instantiation code itself have been
+  executed. If multiple update_template_instance calls will update a single
+  template instantiation, the order of execution is not guaranteed.
+
+  Updates of template instantiation can be used to add additional sources or
+  dependencies by a project embedding another. They can also be used to update
+  variables in a template instantiation.
+
+  update_template_instance must be specified by the top project's BUILD.gn
+  before any targets have been declared. Updates declared afterwards will not
+  be called.
+
+  Caution: Updates of variables already used to compute other variables in
+  the original template instantiation will not affect the other variables'
+  value.
+
+  Caution: In the case of nested template instantiations each using the
+  target_name, the update will only be run for the outermost template with
+  that particular label and toolchain.
+
+  Recommended organization: update_template_instance should be placed in gni
+  files, imported directly or indirectly by the top BUILD.gn file, and no other
+  BUILD.gn file. The gni files should be placed in the same directory as
+  the code they are related to, such as the files being added as sources,
+  or targets added as dependencies.
+
+  Example:
+
+    in //foo/source_updates.gni:
+
+      update_template_instance("//bar:bar") {
+        sources += ["//foo/foo.cc"]
+      }
+
+    in //bar/BUILD.gn
+
+      #import would normally go in top level BUILD.gn
+      import("//foo/source_updates.gni")
+
+      template("baz") {
+        executable(target_name) {
+          sources = invoker.sources
+        }
+      }
+
+      baz("bar") {
+        sources = ["bar.cc"]
+      }
+
+    The result would become
+
+      baz("bar") {
+        sources = [
+          "bar.cc",
+          "//foo/foo.cc",
+        ]
+      }
 ```
 ### <a name="write_file"></a>**write_file**: Write a file to disk.
 

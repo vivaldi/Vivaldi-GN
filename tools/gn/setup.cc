@@ -373,7 +373,8 @@ bool Setup::RunPostMessageLoop() {
     return false;
   }
 
-  if (!build_settings_.build_args().VerifyAllOverridesUsed(&err)) {
+  if (!build_settings_.build_args().VerifyAllOverridesUsed(&err) ||
+      !Scope::VerifyAllUpdatesUsed(&err)) {
     if (base::CommandLine::ForCurrentProcess()->HasSwitch(
             switches::kFailOnUnusedArgs)) {
       err.PrintToStdout();

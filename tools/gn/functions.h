@@ -373,6 +373,38 @@ Value RunWriteFile(Scope* scope,
                    const std::vector<Value>& args,
                    Err* err);
 
+extern const char kUpdateTarget[];
+extern const char kUpdateTarget_HelpShort[];
+extern const char kUpdateTarget_Help[];
+
+Value RunUpdateTarget(Scope* scope,
+                const FunctionCallNode* function,
+                const std::vector<Value>& args,
+                BlockNode* block,
+                Err* err);
+
+extern const char kUpdateTemplate[];
+extern const char kUpdateTemplate_HelpShort[];
+extern const char kUpdateTemplate_Help[];
+
+Value RunUpdateTemplate(Scope* scope,
+                         const FunctionCallNode* function,
+                         const std::vector<Value>& args,
+                         BlockNode* block,
+                         Err* err);
+
+bool UpdateTheTarget(Scope* scope,
+                      const FunctionCallNode* function,
+                      const std::vector<Value>& args,
+                      BlockNode* block,
+                      Err* err);
+bool UpdateTheTemplate(Scope* scope,
+                        const FunctionCallNode* function,
+                        const std::vector<Value>& args,
+                        BlockNode* block,
+                        Err* err,
+                        Scope* function_scope);
+
 extern const char kDeclareOverrides[];
 extern const char kDeclareOverrides_HelpShort[];
 extern const char kDeclareOverrides_Help[];
