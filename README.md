@@ -49,3 +49,7 @@ project').
 You may ask questions and follow along w/ GN's development on Chromium's
 [gn-dev@](https://groups.google.com/a/chromium.org/forum/#!forum/gn-dev)
 Google Group.
+
+## VIvaldi GN Extension
+
+About the [Vivaldi GN branch](docs/Vivaldi-GN.md)
